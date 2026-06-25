@@ -170,8 +170,12 @@ function renderDashboard(){
   const upcomingSteps=allSteps.filter(s=>!s.done&&new Date(s.endDate)<=in7&&new Date(s.endDate)>=TODAY);
   const lateSteps=allSteps.filter(s=>isLate(s));
 
+  // ── DEUX COLONNES : Projets (gauche) / Équipe & pilotage (droite) ────
+  const colProjects=mkEl('div','min-width:0;');
+  const colTeam=mkEl('div','min-width:0;');
+
   // ── SECTION : VUE ÉQUIPE ─────────────────────────────────────────────
-  addDashSection(lc,'👥 Vue Équipe','Ce qui se passe maintenant');
+  addDashSection(colTeam,'👥 Vue Équipe','Ce qui se passe maintenant');
 
   // Charge par personne — anneau coloré par statut (même logique que les anneaux projet : teal/amber/rouge)
   const chargeRow=mkEl('div','display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px;margin-bottom:16px;');
@@ -209,7 +213,7 @@ function renderDashboard(){
       </div>`;
     chargeRow.appendChild(card);
   });
-  lc.appendChild(chargeRow);
+  colTeam.appendChild(chargeRow);
 
 
   // Tâches urgentes J+7
@@ -234,7 +238,7 @@ function renderDashboard(){
   }
 
   // ── SECTION : VUE PROJET ─────────────────────────────────────────────
-  addDashSection(lc,'📋 Vue Projet','Pilotage par pôle');
+  addDashSection(colProjects,'📋 Vue Projet','Pilotage par pôle');
 
   // Répartition par pôle
   const poleRow=mkEl('div','display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px;');
@@ -268,14 +272,39 @@ function renderDashboard(){
       ${poleBudget?`<div style="font-size:10px;color:${cl.t};opacity:.7;margin-top:6px">${poleSpent.toLocaleString('fr-FR')}€ / ${poleBudget.toLocaleString('fr-FR')}€</div>`:''}`;
     poleRow.appendChild(card);
   });
-  lc.appendChild(poleRow);
+  colProjects.appendChild(poleRow);
 
   // Avancement projets — grille d'anneaux triée par statut (retard d'abord, puis à surveiller, puis à jour ; au sein d'un statut, du moins au plus avancé)
-  const projListTitle=mkEl('div','font-size:13px;font-weight:600;color:var(--text2);margin-bottom:8px;');
-  projListTitle.textContent='Avancement par projet';lc.appendChild(projListTitle);
+  const projListHdr=mkEl('div','display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px;flex-wrap:wrap;');
+  const projListTitle=mkEl('div','font-size:13px;font-weight:600;color:var(--text2);');
+  projListTitle.textContent='Avancement par projet';projListHdr.appendChild(projListTitle);
+  const selStyle='font-size:12px;padding:5px 8px;border-radius:var(--r,4px);border:0.5px solid var(--border-md);background:var(--bg);color:var(--text);height:30px;';
+  const filterWrap=mkEl('div','display:flex;gap:6px;');
+  const statusOpts=[['all','Tous les statuts'],['late','En retard'],['soon','À surveiller'],['ok','À jour']];
+  const statusSel=mkEl('select',selStyle);
+  statusSel.innerHTML=statusOpts.map(([v,l])=>`<option value="${v}"${state.dashProjFilter===v?' selected':''}>${l}</option>`).join('');
+  statusSel.onchange=()=>{state.dashProjFilter=statusSel.value;render();};
+  filterWrap.appendChild(statusSel);
+  const polesPresent=['all',...new Set(DB.projects.map(p=>p.pole).filter(Boolean))];
+  const poleSel=mkEl('select',selStyle);
+  poleSel.innerHTML=polesPresent.map(v=>`<option value="${v}"${state.dashPoleFilter===v?' selected':''}>${v==='all'?'Tous les pôles':v}</option>`).join('');
+  poleSel.onchange=()=>{state.dashPoleFilter=poleSel.value;render();};
+  filterWrap.appendChild(poleSel);
+  projListHdr.appendChild(filterWrap);
+  colProjects.appendChild(projListHdr);
+
+  const filteredProjects=DB.projects.filter(p=>
+    (state.dashProjFilter==='all'||projStatus(p).key===state.dashProjFilter) &&
+    (state.dashPoleFilter==='all'||p.pole===state.dashPoleFilter)
+  );
   const projGrid=mkEl('div','display:grid;grid-template-columns:repeat(auto-fill,minmax(92px,1fr));gap:16px 6px;background:var(--surface);border:0.5px solid var(--border);border-radius:var(--r,4px);padding:18px;margin-bottom:20px;');
+  if(!filteredProjects.length){
+    const empty=mkEl('div','padding:18px;text-align:center;color:var(--text3);font-size:12px;grid-column:1/-1;');
+    empty.textContent='Aucun projet ne correspond à ce filtre.';
+    projGrid.appendChild(empty);
+  }
   const CIRC_PROJ=2*Math.PI*28;
-  [...DB.projects].sort((a,b)=>{
+  [...filteredProjects].sort((a,b)=>{
     const sa=projStatus(a),sb=projStatus(b);
     return sa.order!==sb.order?sa.order-sb.order:projProg(a)-projProg(b);
   }).forEach(proj=>{
@@ -305,10 +334,10 @@ function renderDashboard(){
     cell.onclick=()=>{state.view='detail';state.projId=proj.id;state.tab='steps';if(!state.accordionOpen)state.accordionOpen={};state.accordionOpen[proj.lane]=true;render();};
     projGrid.appendChild(cell);
   });
-  lc.appendChild(projGrid);
+  colProjects.appendChild(projGrid);
 
   // ── SECTION : VUE MANAGEMENT ─────────────────────────────────────────
-  addDashSection(lc,'🎯 Vue Management','Valeur produite & stratégie pôle UX');
+  addDashSection(colTeam,'🎯 Vue Management','Valeur produite & stratégie pôle UX');
 
   const mgmtGrid=mkEl('div','display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:16px;');
   const mgmtKpis=[
@@ -326,11 +355,11 @@ function renderDashboard(){
       <div class="kpi-sub">${k.sub}</div>`;
     mgmtGrid.appendChild(card);
   });
-  lc.appendChild(mgmtGrid);
+  colTeam.appendChild(mgmtGrid);
 
   // Répartition des phases (type de travail UX)
   const phaseTitle=mkEl('div','font-size:13px;font-weight:600;color:var(--text2);margin-bottom:8px;');
-  phaseTitle.textContent='Répartition du travail par phase';lc.appendChild(phaseTitle);
+  phaseTitle.textContent='Répartition du travail par phase';colTeam.appendChild(phaseTitle);
   const phaseCount={};
   allSteps.forEach(s=>{phaseCount[s.phase]=(phaseCount[s.phase]||0)+1;});
   const phaseBar=mkEl('div','background:var(--surface);border:0.5px solid var(--border);border-radius:var(--r,4px);padding:16px;margin-bottom:16px;');
@@ -353,7 +382,7 @@ function renderDashboard(){
     phaseLegend.appendChild(li);
   });
   phaseBar.appendChild(phaseLegend);
-  lc.appendChild(phaseBar);
+  colTeam.appendChild(phaseBar);
 
   // Tâches de gestion manquantes (recommandations)
   const mgmtTasks=allSteps.filter(s=>s.phase==='GESTION');
@@ -361,12 +390,18 @@ function renderDashboard(){
   if(projsWithoutGestion.length){
     const recTitle=mkEl('div','font-size:13px;font-weight:600;color:var(--text2);margin-bottom:8px;display:flex;align-items:center;gap:6px;');
     recTitle.innerHTML=`💡 Recommandations <span style="font-size:11px;font-weight:400;color:var(--text3)">${projsWithoutGestion.length} projet${projsWithoutGestion.length>1?'s':''} sans tâche de gestion</span>`;
-    lc.appendChild(recTitle);
+    colProjects.appendChild(recTitle);
     const recBox=mkEl('div','background:var(--amber-bg);border:0.5px solid var(--amber-b);border-radius:var(--r,4px);padding:14px 16px;margin-bottom:16px;');
     recBox.innerHTML=`<div style="font-size:12px;color:var(--amber-t);margin-bottom:8px">Ces projets n'ont pas de tâches de gestion (Brief, Cadrage, Reporting...) — le temps de gestion est donc invisible dans les KPIs :</div>
       <div style="display:flex;flex-wrap:wrap;gap:6px">${projsWithoutGestion.slice(0,6).map(p=>`<span style="background:var(--surface);border:0.5px solid var(--amber-b);border-radius:5px;padding:2px 8px;font-size:11px;color:var(--amber-t);cursor:pointer" onclick="state.view='detail';state.projId='${p.id}';state.tab='steps';render()">${p.name}</span>`).join('')}</div>`;
-    lc.appendChild(recBox);
+    colProjects.appendChild(recBox);
   }
+
+  const dashCols=mkEl('div');
+  dashCols.className='dash-cols';
+  dashCols.appendChild(colProjects);
+  dashCols.appendChild(colTeam);
+  lc.appendChild(dashCols);
 }
 
 function addDashSection(container, title, sub){
