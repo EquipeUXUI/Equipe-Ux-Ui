@@ -10,9 +10,16 @@ function renderDetail(){
   const tPct=timePct(proj);const spent=stepCost(proj);const dr=dailyRate(proj);
   const elapsed=Math.max(0,dBetween(proj.startDate,TODAY_STR));
 
-  // Back
+  // Back — un projet terminé n'apparaît plus sur la Roadmap : on revient vers
+  // l'archive (Projets → Terminé) plutôt que vers une vue où il est invisible.
   const back=document.createElement('div');back.className='detail-back';
-  back.innerHTML='← Tous les projets';back.onclick=()=>{state.view='global';state.projId=null;state.actorId=null;render();};
+  const goneFromRoadmap=projStatusKey(proj)==='termine';
+  back.innerHTML=goneFromRoadmap?'← Projets terminés':'← Tous les projets';
+  back.onclick=()=>{
+    if(goneFromRoadmap){state.view='projects';state.projTab='termine';}
+    else{state.view='global';}
+    state.projId=null;state.actorId=null;render();
+  };
   lc.appendChild(back);
 
   // Grid : panneau projet étroit (gauche) + Gantt/onglets (centre)
@@ -22,14 +29,36 @@ function renderDetail(){
 
   // ── PANNEAU PROJET (étroit) ──────────────────────────────────────────
   const panel=document.createElement('div');panel.style.cssText='display:flex;flex-direction:column;gap:10px;min-width:0;';
+  const isPaused=projStatusKey(proj)==='pause';
+  const isTerminated=projStatusKey(proj)==='termine';
   const panelTop=document.createElement('div');
   panelTop.style.cssText='display:flex;align-items:flex-start;justify-content:space-between;gap:8px;';
-  panelTop.innerHTML=`<div class="detail-title" style="margin-bottom:0">${proj.name}</div>`;
+  panelTop.innerHTML=`<div class="detail-title" style="margin-bottom:0">${isPaused?'⏸ ':''}${proj.name}</div>`;
+  if(!isTerminated){
+    const endBtn=document.createElement('button');endBtn.className='btn-icon';endBtn.title='Terminer le projet';
+    endBtn.innerHTML='<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>';
+    endBtn.onclick=()=>terminateProject(proj.id);
+    panelTop.appendChild(endBtn);
+  }
   const editBtn=document.createElement('button');editBtn.className='btn-icon';editBtn.title='Modifier le projet';
   editBtn.innerHTML='<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>';
   editBtn.onclick=()=>openEditProject(proj.id);
   panelTop.appendChild(editBtn);
   panel.appendChild(panelTop);
+  if(isPaused||isTerminated){
+    const statusChip=document.createElement('div');
+    statusChip.style.cssText=`display:flex;align-items:center;gap:8px;font-size:11px;font-weight:700;color:var(--text3);background:var(--surface2);border-radius:var(--r,4px);padding:5px 9px;width:fit-content;`;
+    if(isPaused){
+      statusChip.innerHTML='⏸ EN PAUSE';
+    }else{
+      statusChip.innerHTML='<span>✅ TERMINÉ</span>';
+      const reactBtn=document.createElement('button');reactBtn.className='btn-secondary sm';reactBtn.style.cssText='height:22px;padding:0 8px;font-size:10.5px;';
+      reactBtn.textContent='↩️ Réactiver';
+      reactBtn.onclick=()=>reactivateProject(proj.id);
+      statusChip.appendChild(reactBtn);
+    }
+    panel.appendChild(statusChip);
+  }
   const metaEl=document.createElement('div');metaEl.className='detail-meta';metaEl.style.margin='0';
   metaEl.innerHTML=proj.lane+'<br>'+fmtDFull(proj.startDate)+' → '+fmtDFull(proj.endDate)+(proj.note?'<br>'+proj.note:'');
   panel.appendChild(metaEl);

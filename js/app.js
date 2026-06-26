@@ -77,6 +77,7 @@ function render(){
   renderRight();
   if(state.view==='global') renderGlobal();
   else if(state.view==='dashboard') renderDashboard();
+  else if(state.view==='projects') renderProjectsPage();
   else if(state.view==='detail') renderDetail();
   else if(state.view==='actor') renderActorView(state.actorId);
   else if(state.view==='hours') renderHoursView();
@@ -87,14 +88,16 @@ function renderNavTabs(){
   const navIcons={
     global:'<svg style="width:13px;height:13px;flex-shrink:0" viewBox="0 0 40 40" fill="none"><path d="M16.5684 7.34301H7.80586L3.36523 11.6174L7.80586 15.8918H18.2069V38H22.0064V14.2296H16.5684V7.34301Z" fill="currentColor"/><path d="M32.1938 4.04222H22.0064V2H18.2069V12.591H32.1938L36.6344 8.31662L32.1938 4.04222Z" fill="currentColor"/></svg>',
     dashboard:'<svg style="width:13px;height:13px;flex-shrink:0" viewBox="0 0 40 40" fill="none"><path d="M33.3335 9.99992H26.6668V6.66659C26.6668 4.81659 25.1835 3.33325 23.3335 3.33325H16.6668C14.8168 3.33325 13.3335 4.81659 13.3335 6.66659V9.99992H6.66683C4.81683 9.99992 3.35016 11.4833 3.35016 13.3333L3.3335 31.6666C3.3335 33.5166 4.81683 34.9999 6.66683 34.9999H33.3335C35.1835 34.9999 36.6668 33.5166 36.6668 31.6666V13.3333C36.6668 11.4833 35.1835 9.99992 33.3335 9.99992ZM23.3335 9.99992H16.6668V6.66659H23.3335V9.99992Z" fill="currentColor"/></svg>',
+    projects:'<svg style="width:13px;height:13px;flex-shrink:0" viewBox="0 0 40 40" fill="none"><path d="M33.3333 8.33333H21.0833L17.5 4.16667H6.66667C4.81667 4.16667 3.35 5.65 3.35 7.5L3.33333 32.5C3.33333 34.35 4.81667 35.8333 6.66667 35.8333H33.3333C35.1833 35.8333 36.6667 34.35 36.6667 32.5V11.6667C36.6667 9.81667 35.1833 8.33333 33.3333 8.33333Z" fill="currentColor"/></svg>',
   };
   const tabs=[
     {id:'global',    label:'Roadmap'},
     {id:'dashboard', label:'Dashboard'},
+    {id:'projects',  label:'Projets'},
   ];
   nt.innerHTML='';
   tabs.forEach(t=>{
-    const isActive=(t.id==='dashboard'&&state.view==='dashboard')||(t.id==='global'&&state.view!=='dashboard');
+    const isActive=(t.id==='global')?(state.view!=='dashboard'&&state.view!=='projects'):state.view===t.id;
     const el=document.createElement('div');
     el.style.cssText=`display:flex;align-items:center;gap:5px;padding:0 12px;height:36px;box-sizing:border-box;border-radius:var(--r,10px);font-size:12px;font-weight:500;cursor:pointer;transition:background .12s,color .12s;color:${isActive?'var(--text)':'var(--text3)'};background:${isActive?'var(--surface)':'none'};${isActive?'box-shadow:0 1px 3px rgba(0,0,0,.07),0 1px 2px rgba(0,0,0,.04)':''}`;
     el.innerHTML=`${navIcons[t.id]||''}${t.label}`;
