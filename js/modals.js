@@ -35,6 +35,7 @@ function saveNewProject(){
   const newLane=document.getElementById('f-plane').value;
   DB.projects.push({id:uid(),name,lane:newLane,color:document.getElementById('f-pcolor').value,
     pole:derivePole(newLane),
+    status:'actif',
     budget:parseFloat(document.getElementById('f-pbudget').value)||0,
     startDate:document.getElementById('f-pstart').value,endDate:document.getElementById('f-pend').value,
     numAffaire:document.getElementById('f-pnumaffaire').value,
@@ -46,6 +47,8 @@ function saveNewProject(){
 }
 function openEditProject(projId){
   const proj=DB.projects.find(p=>p.id===projId);if(!proj)return;
+  const isTerminated=(proj.status||'actif')==='termine';
+  const isPaused=(proj.status||'actif')==='pause';
   openModal(`<div class="modal-title">Modifier ${proj.name}</div>
     <div class="field"><label>Nom</label><input type="text" id="f-pname" value="${proj.name}"></div>
     <div class="field-row">
@@ -56,6 +59,11 @@ function openEditProject(projId){
       <div class="field"><label>Date début</label><input type="date" id="f-pstart" value="${proj.startDate}"></div>
       <div class="field"><label>Date fin</label><input type="date" id="f-pend" value="${proj.endDate}"></div>
     </div>
+    ${isTerminated?`<div class="field" style="font-size:12px;color:var(--text3)">Ce projet est marqué comme terminé. Réactive-le depuis sa fiche projet pour pouvoir le mettre en pause.</div>`:`
+    <div class="field"><label style="display:flex;align-items:center;gap:7px;cursor:pointer">
+      <input type="checkbox" id="f-ppaused" ${isPaused?'checked':''} style="width:15px;height:15px;accent-color:var(--ovalt)">
+      ⏸ Mettre ce projet en pause
+    </label></div>`}
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
       <div class="field"><label>N° d'affaire</label><input id="f-pnumaffaire" value="${proj.numAffaire||''}" placeholder="ex: 802653"></div>
       <div class="field"><label>Code GTA</label><input id="f-pgta" value="${proj.gta||''}" placeholder="ex: 50 / M1 / 102"></div>
@@ -79,11 +87,35 @@ function saveEditProject(projId){
   proj.gta=document.getElementById('f-pgta')?document.getElementById('f-pgta').value:proj.gta;
   proj.responsable=document.getElementById('f-presponsable')?document.getElementById('f-presponsable').value:proj.responsable;
   proj.automaticien=document.getElementById('f-pautomaticien')?document.getElementById('f-pautomaticien').value:proj.automaticien;
+  // Le statut "terminé" ne se touche pas depuis ce formulaire (action dédiée sur la fiche projet) —
+  // ici on ne bascule qu'entre actif et pause, via la checkbox (absente si déjà terminé).
+  if((proj.status||'actif')!=='termine'){
+    const pauseEl=document.getElementById('f-ppaused');
+    proj.status=(pauseEl&&pauseEl.checked)?'pause':'actif';
+  }
   saveDB();closeModal();render();
 }
 function deleteProject(projId){
   if(!confirm('Supprimer ce projet ?'))return;DB.projects=DB.projects.filter(p=>p.id!==projId);
   state.view='global';state.projId=null;saveDB();closeModal();render();
+}
+// Action volontaire (bouton dans la fiche projet) — jamais déclenchée automatiquement sur l'avancement,
+// car des tâches peuvent encore s'ajouter à un projet "fini" en apparence.
+function terminateProject(projId){
+  const proj=DB.projects.find(p=>p.id===projId);if(!proj)return;
+  if(!confirm(`Marquer "${proj.name}" comme terminé ?\n\nIl disparaîtra de la Roadmap, du Dashboard et de la liste "Projets en cours" — il restera consultable dans Projets → Terminé, et tu pourras le réactiver à tout moment.`))return;
+  proj.status='termine';
+  saveDB();
+  showToast('✅ '+proj.name+' marqué comme terminé');
+  state.view='projects';state.projTab='termine';state.projId=null;
+  render();
+}
+function reactivateProject(projId){
+  const proj=DB.projects.find(p=>p.id===projId);if(!proj)return;
+  proj.status='actif';
+  saveDB();
+  showToast('↩️ '+proj.name+' réactivé');
+  render();
 }
 
 function openNewStep(projId){

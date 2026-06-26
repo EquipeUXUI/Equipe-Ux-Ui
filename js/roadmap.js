@@ -28,16 +28,20 @@ function renderGlobal(){
   const lc=document.getElementById('left-col');lc.innerHTML='';
   lc.innerHTML='';
 
+  // On masque les projets terminés (archivés dans Projets → Terminé) : la roadmap
+  // annuelle ne doit montrer que ce qui est encore en jeu (actif ou en pause).
+  const visibleProjs=nonTerminatedProjects();
+
   // Rangée KPI : météo + 4 indicateurs, dans une seule grille (comme la maquette)
   const m=meteoStatus();
   const kpiWrap=document.createElement('div');kpiWrap.className='kpi-row';
-  const totalProjs=DB.projects.length;
-  const lateProjs=DB.projects.filter(p=>projLate(p)).length;
-  const totalSteps=DB.projects.reduce((s,p)=>s+p.steps.length,0);
-  const doneSteps=DB.projects.reduce((s,p)=>s+p.steps.filter(st=>st.done).length,0);
+  const totalProjs=visibleProjs.length;
+  const lateProjs=activeProjects().filter(p=>projLate(p)).length;
+  const totalSteps=visibleProjs.reduce((s,p)=>s+p.steps.length,0);
+  const doneSteps=visibleProjs.reduce((s,p)=>s+p.steps.filter(st=>st.done).length,0);
   const globalProg=totalSteps?Math.round(doneSteps/totalSteps*100):0;
-  const totalBudget=DB.projects.reduce((s,p)=>s+(p.budget||0),0);
-  const totalSpent=DB.projects.reduce((s,p)=>s+stepCost(p),0);
+  const totalBudget=visibleProjs.reduce((s,p)=>s+(p.budget||0),0);
+  const totalSpent=visibleProjs.reduce((s,p)=>s+stepCost(p),0);
   kpiWrap.innerHTML=`
     <div class="kpi" style="cursor:pointer">
       <div class="kpi-label">Météo</div>
@@ -96,7 +100,7 @@ function buildGlobalGantt(){
   wrap.appendChild(mrow);
   const todayPct=((TODAY.getMonth()+TODAY.getDate()/31)/12)*100;
 
-  const grouped={};DB.projects.forEach(p=>{if(!grouped[p.lane])grouped[p.lane]=[];grouped[p.lane].push(p);});
+  const grouped={};nonTerminatedProjects().forEach(p=>{if(!grouped[p.lane])grouped[p.lane]=[];grouped[p.lane].push(p);});
 
   LANE_ORDER.forEach((ln,idx)=>{
     if(!grouped[ln])return;
@@ -106,20 +110,22 @@ function buildGlobalGantt(){
     if(!isOpen)return;
 
     projs.forEach(proj=>{
+      const paused=projStatusKey(proj)==='pause';
       const lane=document.createElement('div');lane.className='g-lane';
-      const lbl=document.createElement('div');lbl.className='g-lbl';lbl.textContent=proj.name;
+      const lbl=document.createElement('div');lbl.className='g-lbl';lbl.textContent=(paused?'⏸ ':'')+proj.name;
+      if(paused)lbl.style.color='var(--text3)';
       lbl.onclick=()=>{state.view='detail';state.projId=proj.id;state.tab='steps';state.accordionOpen[proj.lane]=true;render();};
       lane.appendChild(lbl);
       const track=document.createElement('div');track.className='g-track';
       const s=new Date(proj.startDate),e=new Date(proj.endDate);
       const sM=s.getMonth()+(s.getDate()-1)/31,eM=e.getMonth()+(e.getDate())/31;
       const left=(sM/12)*100,width=((eM-sM)/12)*100;
-      const p=PAL[proj.color]||PAL.teal;
+      const p=paused?PAL.grey:(PAL[proj.color]||PAL.teal);
       const bar=document.createElement('div');bar.className='g-bar';
-      bar.style.cssText=`left:${Math.max(0,left)}%;width:${Math.min(width,100-Math.max(0,left))}%;background:${p.bg};border-color:${p.b};color:${p.t};`;
-      if(projLate(proj))bar.style.borderStyle='dashed';
-      bar.textContent=proj.name;
-      bar.addEventListener('mouseenter',ev=>showTT(ev,`<strong>${proj.name}</strong>${proj.note||''}<em>${fmtDFull(proj.startDate)} → ${fmtDFull(proj.endDate)} · ${projProg(proj)}% fait</em>`));
+      bar.style.cssText=`left:${Math.max(0,left)}%;width:${Math.min(width,100-Math.max(0,left))}%;background:${paused?'repeating-linear-gradient(135deg,'+p.bg+' 0,'+p.bg+' 6px,var(--surface2) 6px,var(--surface2) 12px)':p.bg};border-color:${p.b};color:${p.t};`;
+      if(!paused&&projLate(proj))bar.style.borderStyle='dashed';
+      bar.textContent=(paused?'⏸ ':'')+proj.name;
+      bar.addEventListener('mouseenter',ev=>showTT(ev,`<strong>${proj.name}</strong>${paused?'<em>⏸ En pause</em>':''}${proj.note||''}<em>${fmtDFull(proj.startDate)} → ${fmtDFull(proj.endDate)} · ${projProg(proj)}% fait</em>`));
       bar.addEventListener('mousemove',moveTT);bar.addEventListener('mouseleave',hideTT);
       bar.onclick=()=>{state.view='detail';state.projId=proj.id;state.tab='steps';state.accordionOpen[proj.lane]=true;render();};
       track.appendChild(bar);
@@ -142,31 +148,66 @@ function buildGlobalGantt(){
 }
 
 // ─── DASHBOARD ───────────────────────────────────────────────────────────
+// ─── CARTE-ANNEAU PROJET ─────────────────────────────────────────────────
+// Factorisé hors de renderDashboard() pour être réutilisé tel quel par la page Projets
+// (onglet "En cours") — même rendu, même comportement de clic, une seule source de vérité.
+function buildProjRingCell(proj){
+  const CIRC_PROJ=2*Math.PI*28;
+  const st=projStatus(proj);
+  const prog=projProg(proj);
+  const statusColorVar={red:'var(--red-b)',amber:'var(--amber-b)',teal:'var(--teal-b)',grey:'var(--border-md)'}[st.color];
+  const statusTextVar={red:'var(--red-t)',amber:'var(--amber-t)',teal:'var(--text3)',grey:'var(--text3)'}[st.color];
+  const poleHex=(PAL[POLE_COLORS[proj.pole]]||PAL.blue).hex;
+  const dash=(prog/100*CIRC_PROJ).toFixed(1);
+
+  const cell=mkEl('div','display:flex;flex-direction:column;align-items:center;text-align:center;cursor:pointer;');
+  cell.innerHTML=`
+    <div style="position:relative;width:72px;height:72px">
+      <svg width="72" height="72" viewBox="0 0 72 72">
+        <circle cx="36" cy="36" r="28" fill="none" stroke="var(--border-md)" stroke-width="7"/>
+        <circle cx="36" cy="36" r="28" fill="none" stroke="${statusColorVar}" stroke-width="7" stroke-linecap="round" stroke-dasharray="${dash} ${CIRC_PROJ.toFixed(1)}" transform="rotate(-90 36 36)"/>
+      </svg>
+      <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;color:var(--text)">${prog}%</div>
+    </div>
+    <div style="display:flex;align-items:center;gap:5px;margin-top:8px;max-width:88px">
+      <span style="width:7px;height:7px;border-radius:2px;background:${poleHex};flex-shrink:0"></span>
+      <span style="font-size:10.5px;font-weight:600;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${proj.name}</span>
+    </div>
+    <div style="font-size:9.5px;font-weight:700;color:${statusTextVar};margin-top:1px">${st.key==='ok'?'\u00A0':st.label}</div>`;
+  cell.addEventListener('mouseenter',ev=>showTT(ev,`<strong>${proj.name}</strong>${proj.note||''}<em>${fmtDFull(proj.startDate)} → ${fmtDFull(proj.endDate)} · ${st.label}</em>`));
+  cell.addEventListener('mousemove',moveTT);cell.addEventListener('mouseleave',hideTT);
+  cell.onclick=()=>{state.view='detail';state.projId=proj.id;state.tab='steps';if(!state.accordionOpen)state.accordionOpen={};state.accordionOpen[proj.lane]=true;render();};
+  return cell;
+}
+
 function renderDashboard(){
   const lc=document.getElementById('left-col');lc.innerHTML='';
   lc.style.cssText='';
 
   // ── HELPERS ──────────────────────────────────────────────────────────
-  const allSteps=DB.projects.flatMap(p=>p.steps.map(s=>({...s,proj:p})));
+  // On exclut les projets terminés : ils sont archivés dans Projets → Terminé
+  // et ne doivent plus peser sur les KPIs "en cours" du Dashboard.
+  const visibleProjs=nonTerminatedProjects();
+  const allSteps=visibleProjs.flatMap(p=>p.steps.map(s=>({...s,proj:p})));
   const todayStr=TODAY_STR;
   const in7=new Date(TODAY);in7.setDate(in7.getDate()+7);
   const in30=new Date(TODAY);in30.setDate(in30.getDate()+30);
 
   // Projets par pôle
   const byPole={Industriel:[],Céréalier:[],Transversal:[]};
-  DB.projects.forEach(p=>{const pole=p.pole||'Transversal';if(byPole[pole])byPole[pole].push(p);else byPole['Transversal'].push(p);});
+  visibleProjs.forEach(p=>{const pole=p.pole||'Transversal';if(byPole[pole])byPole[pole].push(p);else byPole['Transversal'].push(p);});
 
   // KPIs globaux
-  const totalProjs=DB.projects.length;
-  const lateProjs=DB.projects.filter(p=>projLate(p)).length;
-  const deliveredProjs=DB.projects.filter(p=>p.steps.length&&p.steps.every(s=>s.done)).length;
+  const totalProjs=visibleProjs.length;
+  const lateProjs=visibleProjs.filter(p=>projStatusKey(p)==='actif'&&projLate(p)).length;
+  const deliveredProjs=visibleProjs.filter(p=>p.steps.length&&p.steps.every(s=>s.done)).length;
   const allDone=allSteps.filter(s=>s.done).length;
   const allTotal=allSteps.length;
   const globalProg=allTotal?Math.round(allDone/allTotal*100):0;
-  const onTimeProjs=DB.projects.filter(p=>!projLate(p)&&p.steps.length>0).length;
+  const onTimeProjs=visibleProjs.filter(p=>projStatusKey(p)==='pause'||(!projLate(p)&&p.steps.length>0)).length;
   const deliveryRate=totalProjs?Math.round(onTimeProjs/totalProjs*100):0;
-  const totalBudget=DB.projects.reduce((s,p)=>s+(p.budget||0),0);
-  const totalSpent=DB.projects.reduce((s,p)=>s+stepCost(p),0);
+  const totalBudget=visibleProjs.reduce((s,p)=>s+(p.budget||0),0);
+  const totalSpent=visibleProjs.reduce((s,p)=>s+stepCost(p),0);
 
   // ── DEUX COLONNES : Projets (gauche) / Équipe & pilotage (droite) ────
   const colProjects=mkEl('div','min-width:0;');
@@ -239,14 +280,13 @@ function renderDashboard(){
   addDashSection(colProjects,'📋 Vue Projet','Pilotage par pôle');
 
   // Répartition par pôle — donut centré + légende en liste en dessous
-  const poleColors={Industriel:'blue',Céréalier:'green',Transversal:'purple'};
   const poleEntries=Object.entries(byPole);
   const totalForDonut=poleEntries.reduce((s,[,projs])=>s+projs.length,0)||1;
   const rDonut=58, cxD=100, cyD=100, swDonut=26;
   const circDonut=2*Math.PI*rDonut;
   let cum=0;
   const segs=poleEntries.map(([pole,projs])=>{
-    const cl=PAL[poleColors[pole]]||PAL.blue;
+    const cl=PAL[POLE_COLORS[pole]]||PAL.blue;
     const count=projs.length;
     const len=count/totalForDonut*circDonut;
     const poleProgs=projs.map(p=>projProg(p));
@@ -285,12 +325,12 @@ function renderDashboard(){
   projListTitle.textContent='Avancement par projet';projListHdr.appendChild(projListTitle);
   const selStyle='font-size:12px;padding:5px 8px;border-radius:var(--r,4px);border:0.5px solid var(--border-md);background:var(--bg);color:var(--text);height:30px;';
   const filterWrap=mkEl('div','display:flex;gap:6px;');
-  const statusOpts=[['all','Tous les statuts'],['late','En retard'],['soon','À surveiller'],['ok','À jour']];
+  const statusOpts=[['all','Tous les statuts'],['late','En retard'],['soon','À surveiller'],['ok','À jour'],['pause','En pause']];
   const statusSel=mkEl('select',selStyle);
   statusSel.innerHTML=statusOpts.map(([v,l])=>`<option value="${v}"${state.dashProjFilter===v?' selected':''}>${l}</option>`).join('');
   statusSel.onchange=()=>{state.dashProjFilter=statusSel.value;render();};
   filterWrap.appendChild(statusSel);
-  const polesPresent=['all',...new Set(DB.projects.map(p=>p.pole).filter(Boolean))];
+  const polesPresent=['all',...new Set(visibleProjs.map(p=>p.pole).filter(Boolean))];
   const poleSel=mkEl('select',selStyle);
   poleSel.innerHTML=polesPresent.map(v=>`<option value="${v}"${state.dashPoleFilter===v?' selected':''}>${v==='all'?'Tous les pôles':v}</option>`).join('');
   poleSel.onchange=()=>{state.dashPoleFilter=poleSel.value;render();};
@@ -298,7 +338,7 @@ function renderDashboard(){
   projListHdr.appendChild(filterWrap);
   colProjects.appendChild(projListHdr);
 
-  const filteredProjects=DB.projects.filter(p=>
+  const filteredProjects=visibleProjs.filter(p=>
     (state.dashProjFilter==='all'||projStatus(p).key===state.dashProjFilter) &&
     (state.dashPoleFilter==='all'||p.pole===state.dashPoleFilter)
   );
@@ -308,36 +348,11 @@ function renderDashboard(){
     empty.textContent='Aucun projet ne correspond à ce filtre.';
     projGrid.appendChild(empty);
   }
-  const CIRC_PROJ=2*Math.PI*28;
   [...filteredProjects].sort((a,b)=>{
     const sa=projStatus(a),sb=projStatus(b);
     return sa.order!==sb.order?sa.order-sb.order:projProg(a)-projProg(b);
   }).forEach(proj=>{
-    const st=projStatus(proj);
-    const prog=projProg(proj);
-    const statusColorVar={red:'var(--red-b)',amber:'var(--amber-b)',teal:'var(--teal-b)'}[st.color];
-    const statusTextVar={red:'var(--red-t)',amber:'var(--amber-t)',teal:'var(--text3)'}[st.color];
-    const poleHex=(PAL[poleColors[proj.pole]]||PAL.blue).hex;
-    const dash=(prog/100*CIRC_PROJ).toFixed(1);
-
-    const cell=mkEl('div','display:flex;flex-direction:column;align-items:center;text-align:center;cursor:pointer;');
-    cell.innerHTML=`
-      <div style="position:relative;width:72px;height:72px">
-        <svg width="72" height="72" viewBox="0 0 72 72">
-          <circle cx="36" cy="36" r="28" fill="none" stroke="var(--border-md)" stroke-width="7"/>
-          <circle cx="36" cy="36" r="28" fill="none" stroke="${statusColorVar}" stroke-width="7" stroke-linecap="round" stroke-dasharray="${dash} ${CIRC_PROJ.toFixed(1)}" transform="rotate(-90 36 36)"/>
-        </svg>
-        <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;color:var(--text)">${prog}%</div>
-      </div>
-      <div style="display:flex;align-items:center;gap:5px;margin-top:8px;max-width:88px">
-        <span style="width:7px;height:7px;border-radius:2px;background:${poleHex};flex-shrink:0"></span>
-        <span style="font-size:10.5px;font-weight:600;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${proj.name}</span>
-      </div>
-      <div style="font-size:9.5px;font-weight:700;color:${statusTextVar};margin-top:1px">${st.key==='ok'?'\u00A0':st.label}</div>`;
-    cell.addEventListener('mouseenter',ev=>showTT(ev,`<strong>${proj.name}</strong>${proj.note||''}<em>${fmtDFull(proj.startDate)} → ${fmtDFull(proj.endDate)} · ${st.label}</em>`));
-    cell.addEventListener('mousemove',moveTT);cell.addEventListener('mouseleave',hideTT);
-    cell.onclick=()=>{state.view='detail';state.projId=proj.id;state.tab='steps';if(!state.accordionOpen)state.accordionOpen={};state.accordionOpen[proj.lane]=true;render();};
-    projGrid.appendChild(cell);
+    projGrid.appendChild(buildProjRingCell(proj));
   });
   colProjects.appendChild(projGrid);
 
@@ -391,7 +406,7 @@ function renderDashboard(){
 
   // Tâches de gestion manquantes (recommandations)
   const mgmtTasks=allSteps.filter(s=>s.phase==='GESTION');
-  const projsWithoutGestion=DB.projects.filter(p=>!p.steps.some(s=>s.phase==='GESTION'));
+  const projsWithoutGestion=visibleProjs.filter(p=>!p.steps.some(s=>s.phase==='GESTION'));
   if(projsWithoutGestion.length){
     const recTitle=mkEl('div','font-size:13px;font-weight:600;color:var(--text2);margin-bottom:8px;display:flex;align-items:center;gap:6px;');
     recTitle.innerHTML=`💡 Recommandations <span style="font-size:11px;font-weight:400;color:var(--text3)">${projsWithoutGestion.length} projet${projsWithoutGestion.length>1?'s':''} sans tâche de gestion</span>`;

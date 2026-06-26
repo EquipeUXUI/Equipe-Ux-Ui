@@ -75,12 +75,18 @@ async function syncFromSheets(){
           else if(laneVal.includes('Industriel')) poleVal='Industriel';
           else if(laneVal.includes('Transversal')) poleVal='Transversal';
         }
+        // Statut explicite (colonne 10) : réutilise la même cellule qu'avant (auparavant
+        // une simple info "Livré/En cours" écrite mais jamais relue) — on la relit désormais
+        // pour restaurer pause/terminé après un cycle sync ↓ / save ↑.
+        const statutRaw=String(row[10]||'').trim().toLowerCase();
+        const status=statutRaw.includes('pause')?'pause':statutRaw.includes('termin')?'termine':'actif';
         return {
           id,
           name:String(row[1]||''),
           lane:laneVal,
           color:String(row[3]||'purple'),
           pole:poleVal,
+          status,
           budget:parseFloat(row[7])||0,
           startDate:String(row[5]||'').slice(0,10),
           endDate:String(row[6]||'').slice(0,10),
@@ -173,7 +179,7 @@ async function saveToSheets(){
         p.id||'', p.name||'', p.lane||'', p.color||'', p.pole||'',
         p.startDate||'', p.endDate||'', p.budget||0,
         (p.actors||[]).join(', '), '',
-        projProg(p)===100?'Livre':'En cours',
+        ({actif:'Actif',pause:'En pause',termine:'Terminé'})[p.status||'actif'],
         p.note||'', ''
       ])
     ];

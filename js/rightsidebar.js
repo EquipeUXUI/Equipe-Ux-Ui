@@ -67,8 +67,11 @@ function renderRight(){
   projBlock.appendChild(projHdr);
 
   // ── Regroupe les projets par catégorie (lane) pour l'accordéon ─────────
+  // Les projets terminés ne s'affichent plus ici : ils restent consultables dans
+  // Projets → Terminé. Les projets en pause restent visibles (pour rester accessibles
+  // au quotidien), avec un badge dédié plus bas.
   const grouped={};
-  DB.projects.forEach(proj=>{
+  nonTerminatedProjects().forEach(proj=>{
     const key=proj.lane||'Autre';
     if(!grouped[key]) grouped[key]=[];
     grouped[key].push(proj);
@@ -85,19 +88,20 @@ function renderRight(){
     if(isOpen){
       const accBody=document.createElement('div');accBody.style.cssText='margin-left:4px;margin-bottom:8px;display:flex;flex-direction:column;gap:8px;';
       projs.forEach(proj=>{
-        const p=PAL[proj.color]||PAL.teal;
-        const prog=projProg(proj);const late=projLate(proj);
+        const paused=projStatusKey(proj)==='pause';
+        const p=paused?PAL.grey:(PAL[proj.color]||PAL.teal);
+        const prog=projProg(proj);const late=!paused&&projLate(proj);
         const dLeft=dBetween(TODAY_STR,proj.endDate);
         const card=document.createElement('div');card.className='rproj-card'+(state.projId===proj.id?' active':'');
         card.innerHTML=`
-          <div class="rproj-row"><div class="rproj-name">${proj.name}</div><span class="badge" style="background:${p.bg};border-color:${p.b};color:${p.t}">${proj.lane.toUpperCase()}</span></div>
+          <div class="rproj-row"><div class="rproj-name">${paused?'⏸ ':''}${proj.name}</div><span class="badge" style="background:${p.bg};border-color:${p.b};color:${p.t}">${proj.lane.toUpperCase()}</span></div>
           <div class="rproj-meta" style="margin-top:2px">
             <span style="font-size:10px;color:var(--text3)">${fmtD(proj.startDate)} → ${fmtD(proj.endDate)}</span>
           </div>
           <div class="rproj-meta" style="margin-top:2px">${projProg(proj)}% complété · ${proj.steps.length} étapes</div>
           <div class="rproj-prog"><div class="prog-bar"><div class="prog-fill" style="width:${prog}%;background:${p.hex}"></div></div><div class="prog-pct">${prog}%</div></div>
           ${proj.actors.length?`<div class="rproj-avatars">${proj.actors.map(aid=>avHTML(aid,'av-sm')).join('')}</div>`:''}
-          ${late?`<div class="warn-tag">⚠ Retard détecté</div>`:dLeft>=0&&dLeft<14?`<div class="warn-tag" style="color:var(--amber-t)">⏱ ${dLeft}j restants</div>`:''}
+          ${paused?`<div class="warn-tag" style="color:var(--text3)">⏸ En pause</div>`:late?`<div class="warn-tag">⚠ Retard détecté</div>`:dLeft>=0&&dLeft<14?`<div class="warn-tag" style="color:var(--amber-t)">⏱ ${dLeft}j restants</div>`:''}
         `;
         card.onclick=()=>{state.view='detail';state.projId=proj.id;state.tab='steps';render();};
         accBody.appendChild(card);
