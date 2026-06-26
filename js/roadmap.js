@@ -128,6 +128,10 @@ function buildGlobalGantt(){
       bar.addEventListener('mouseenter',ev=>showTT(ev,`<strong>${proj.name}</strong>${paused?'<em>⏸ En pause</em>':''}${proj.note||''}<em>${fmtDFull(proj.startDate)} → ${fmtDFull(proj.endDate)} · ${projProg(proj)}% fait</em>`));
       bar.addEventListener('mousemove',moveTT);bar.addEventListener('mouseleave',hideTT);
       bar.onclick=()=>{state.view='detail';state.projId=proj.id;state.tab='steps';state.accordionOpen[proj.lane]=true;render();};
+      bar.addEventListener('contextmenu',ev=>{
+        ev.preventDefault();hideTT();
+        showProjQuickMenu(proj.id,ev.clientX,ev.clientY);
+      });
       track.appendChild(bar);
       lane.appendChild(track);wrap.appendChild(lane);
     });
@@ -160,7 +164,7 @@ function buildProjRingCell(proj){
   const poleHex=(PAL[POLE_COLORS[proj.pole]]||PAL.blue).hex;
   const dash=(prog/100*CIRC_PROJ).toFixed(1);
 
-  const cell=mkEl('div','display:flex;flex-direction:column;align-items:center;text-align:center;cursor:pointer;');
+  const cell=mkEl('div','display:flex;flex-direction:column;align-items:center;text-align:center;cursor:pointer;position:relative;');
   cell.innerHTML=`
     <div style="position:relative;width:72px;height:72px">
       <svg width="72" height="72" viewBox="0 0 72 72">
@@ -168,12 +172,18 @@ function buildProjRingCell(proj){
         <circle cx="36" cy="36" r="28" fill="none" stroke="${statusColorVar}" stroke-width="7" stroke-linecap="round" stroke-dasharray="${dash} ${CIRC_PROJ.toFixed(1)}" transform="rotate(-90 36 36)"/>
       </svg>
       <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;color:var(--text)">${prog}%</div>
+      <button data-proj-menu-btn title="Actions rapides" style="position:absolute;top:-4px;right:-4px;width:20px;height:20px;border:0.5px solid var(--border-md);background:var(--surface);border-radius:50%;color:var(--text3);cursor:pointer;font-size:12px;line-height:1;box-shadow:0 1px 3px rgba(0,0,0,.08);">⋯</button>
     </div>
     <div style="display:flex;align-items:center;gap:5px;margin-top:8px;max-width:88px">
       <span style="width:7px;height:7px;border-radius:2px;background:${poleHex};flex-shrink:0"></span>
       <span style="font-size:10.5px;font-weight:600;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${proj.name}</span>
     </div>
     <div style="font-size:9.5px;font-weight:700;color:${statusTextVar};margin-top:1px">${st.key==='ok'?'\u00A0':st.label}</div>`;
+  cell.querySelector('[data-proj-menu-btn]').onclick=(ev)=>{
+    ev.stopPropagation();
+    const r=ev.currentTarget.getBoundingClientRect();
+    showProjQuickMenu(proj.id,r.left,r.bottom+4);
+  };
   cell.addEventListener('mouseenter',ev=>showTT(ev,`<strong>${proj.name}</strong>${proj.note||''}<em>${fmtDFull(proj.startDate)} → ${fmtDFull(proj.endDate)} · ${st.label}</em>`));
   cell.addEventListener('mousemove',moveTT);cell.addEventListener('mouseleave',hideTT);
   cell.onclick=()=>{state.view='detail';state.projId=proj.id;state.tab='steps';if(!state.accordionOpen)state.accordionOpen={};state.accordionOpen[proj.lane]=true;render();};

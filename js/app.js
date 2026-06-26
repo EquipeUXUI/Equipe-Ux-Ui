@@ -127,6 +127,53 @@ function toggleMainMenu(){
   const m=document.getElementById('main-menu');
   if(m) m.style.display=m.style.display==='none'?'block':'none';
 }
+
+// ─── MENU RAPIDE PROJET (⋯) ──────────────────────────────────────────────
+// Un seul menu flottant générique, réutilisé par : le bouton ⋯ des cartes de la
+// sidebar, le bouton ⋯ des cartes-anneaux (Dashboard + page Projets), et le clic
+// droit sur les barres de la Roadmap. Permet pause/reprise, terminer/réactiver et
+// modifier sans avoir à ouvrir la fiche projet.
+function closeProjQuickMenu(){
+  const m=document.getElementById('proj-quick-menu');if(m)m.remove();
+}
+function showProjQuickMenu(projId,x,y){
+  closeProjQuickMenu();
+  const proj=DB.projects.find(p=>p.id===projId);if(!proj)return;
+  const status=projStatusKey(proj);
+  const items=[];
+  if(status==='termine'){
+    items.push({icon:'↩️',label:'Réactiver',action:()=>reactivateProject(projId)});
+  }else{
+    items.push(status==='pause'
+      ?{icon:'▶️',label:'Reprendre',action:()=>togglePauseProject(projId)}
+      :{icon:'⏸',label:'Mettre en pause',action:()=>togglePauseProject(projId)});
+    items.push({icon:'✅',label:'Terminer le projet',action:()=>terminateProject(projId)});
+  }
+  items.push({icon:'✏️',label:'Modifier',action:()=>openEditProject(projId)});
+
+  const menu=document.createElement('div');menu.id='proj-quick-menu';
+  menu.style.cssText=`position:fixed;left:${x}px;top:${y}px;background:var(--surface);border-radius:var(--r,10px);padding:4px;min-width:178px;z-index:200;box-shadow:0 2px 8px rgba(0,0,0,.1),0 0 0 0.5px rgba(0,0,0,.07);`;
+  items.forEach(it=>{
+    const row=document.createElement('div');
+    row.style.cssText='display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:6px;font-size:12px;cursor:pointer;color:var(--text);white-space:nowrap;';
+    row.innerHTML=`<span style="width:14px;text-align:center;flex-shrink:0">${it.icon}</span>${it.label}`;
+    row.onmouseover=()=>row.style.background='var(--surface2)';
+    row.onmouseout=()=>row.style.background='none';
+    row.onclick=(ev)=>{ev.stopPropagation();closeProjQuickMenu();it.action();};
+    menu.appendChild(row);
+  });
+  document.body.appendChild(menu);
+  // Repositionne si le menu dépasse de l'écran (coin bas/droit de l'écran)
+  const r=menu.getBoundingClientRect();
+  if(r.right>window.innerWidth-8) menu.style.left=Math.max(8,window.innerWidth-r.width-8)+'px';
+  if(r.bottom>window.innerHeight-8) menu.style.top=Math.max(8,window.innerHeight-r.height-8)+'px';
+}
+document.addEventListener('click',e=>{
+  if(!e.target.closest('#proj-quick-menu')&&!e.target.closest('[data-proj-menu-btn]')) closeProjQuickMenu();
+});
+document.addEventListener('contextmenu',e=>{
+  if(!e.target.closest('.g-bar')) closeProjQuickMenu();
+});
 render();
 document.addEventListener('click',function(e){
   if(!e.target.closest('#main-menu')&&!e.target.closest('[onclick*="toggleMainMenu"]')){

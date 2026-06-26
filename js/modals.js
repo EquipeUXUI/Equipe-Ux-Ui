@@ -117,6 +117,15 @@ function reactivateProject(projId){
   showToast('↩️ '+proj.name+' réactivé');
   render();
 }
+// Bascule actif ↔ pause en un clic (menu rapide ⋯) — sans ouvrir la modale d'édition.
+// Pas d'effet sur un projet terminé (la checkbox pause de la modale est de toute façon masquée dans ce cas).
+function togglePauseProject(projId){
+  const proj=DB.projects.find(p=>p.id===projId);if(!proj||(proj.status||'actif')==='termine')return;
+  proj.status=(proj.status==='pause')?'actif':'pause';
+  saveDB();
+  showToast(proj.status==='pause'?'⏸ '+proj.name+' mis en pause':'▶️ '+proj.name+' repris');
+  render();
+}
 
 function openNewStep(projId){
   const proj=DB.projects.find(p=>p.id===projId);if(!proj)return;

@@ -94,7 +94,13 @@ function renderRight(){
         const dLeft=dBetween(TODAY_STR,proj.endDate);
         const card=document.createElement('div');card.className='rproj-card'+(state.projId===proj.id?' active':'');
         card.innerHTML=`
-          <div class="rproj-row"><div class="rproj-name">${paused?'⏸ ':''}${proj.name}</div><span class="badge" style="background:${p.bg};border-color:${p.b};color:${p.t}">${proj.lane.toUpperCase()}</span></div>
+          <div class="rproj-row">
+            <div class="rproj-name" style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${paused?'⏸ ':''}${proj.name}</div>
+            <div style="display:flex;align-items:center;gap:4px;flex-shrink:0">
+              <span class="badge" style="background:${p.bg};border-color:${p.b};color:${p.t}">${proj.lane.toUpperCase()}</span>
+              <button data-proj-menu-btn title="Actions rapides" style="flex-shrink:0;width:20px;height:20px;border:none;background:none;border-radius:4px;color:var(--text3);cursor:pointer;font-size:13px;line-height:1;">⋯</button>
+            </div>
+          </div>
           <div class="rproj-meta" style="margin-top:2px">
             <span style="font-size:10px;color:var(--text3)">${fmtD(proj.startDate)} → ${fmtD(proj.endDate)}</span>
           </div>
@@ -103,6 +109,14 @@ function renderRight(){
           ${proj.actors.length?`<div class="rproj-avatars">${proj.actors.map(aid=>avHTML(aid,'av-sm')).join('')}</div>`:''}
           ${paused?`<div class="warn-tag" style="color:var(--text3)">⏸ En pause</div>`:late?`<div class="warn-tag">⚠ Retard détecté</div>`:dLeft>=0&&dLeft<14?`<div class="warn-tag" style="color:var(--amber-t)">⏱ ${dLeft}j restants</div>`:''}
         `;
+        const menuBtn=card.querySelector('[data-proj-menu-btn]');
+        menuBtn.onmouseover=()=>menuBtn.style.background='var(--surface2)';
+        menuBtn.onmouseout=()=>menuBtn.style.background='none';
+        menuBtn.onclick=(ev)=>{
+          ev.stopPropagation();
+          const r=menuBtn.getBoundingClientRect();
+          showProjQuickMenu(proj.id,r.left,r.bottom+4);
+        };
         card.onclick=()=>{state.view='detail';state.projId=proj.id;state.tab='steps';render();};
         accBody.appendChild(card);
       });
