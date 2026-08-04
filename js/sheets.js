@@ -39,6 +39,16 @@ function setSyncStatus(msg, color='var(--text3)'){
   if(btn){ btn.textContent='☁️ '+msg; btn.style.color=color; }
 }
 
+// Vrai une fois que la synchro de démarrage (auto-sync au chargement de la page) est terminée,
+// avec succès ou en échec. Tant que c'est faux, on retarde toute écriture (voir waitForInitialSync)
+// pour ne jamais risquer d'écraser Google Sheets avec une DB locale pas encore à jour.
+let initialSyncDone=false;
+let initialSyncPromiseResolve=null;
+const initialSyncPromise=new Promise(res=>{initialSyncPromiseResolve=res;});
+async function waitForInitialSync(){
+  if(!initialSyncDone) await initialSyncPromise;
+}
+
 async function syncFromSheets(){
   setSyncStatus('Chargement...','var(--blue-t)');
   try {
@@ -106,7 +116,7 @@ async function syncFromSheets(){
           color:({PROPOSITION:'coral',OBSERVATION:'blue',ANALYSE:'purple',RESTITUTION:'teal',PROTOTYPE:'pink',TEST:'green',SUIVI_DEV:'blue',MEETING:'amber',GESTION:'green'})[phase]||'teal',
           startDate:String(row[6]||'').slice(0,10),
           endDate:String(row[7]||'').slice(0,10),
-          assignee:String(row[5]||''),
+          assignees:String(row[5]||'').split(',').map(s=>s.trim()).filter(Boolean),
           cost:parseFloat(row[8])||0,
           priority:String(row[9]||'normal'),
           done:String(row[10]||'').toLowerCase().includes('termin'),
@@ -156,6 +166,10 @@ async function syncFromSheets(){
     setSyncStatus('Erreur','var(--red-t)');
     showToast('❌ Erreur sync : '+err.message, true);
     console.error(err);
+  } finally {
+    // Que le sync ait réussi ou échoué, on débloque les écritures — sinon un vrai échec réseau
+    // bloquerait toute sauvegarde indéfiniment. Ne fait rien après le tout premier appel.
+    if(!initialSyncDone){ initialSyncDone=true; initialSyncPromiseResolve(); }
   }
 }
 
@@ -187,6 +201,9 @@ async function fetchServerActors(){
 // la plus fraîche depuis Google Sheets et on la fusionne avec la liste locale AVANT d'appliquer le
 // changement et de sauvegarder. Ça évite qu'un enregistrement écrase un collègue ajouté ailleurs
 // (autre poste, autre onglet, sync pas encore terminée) — c'était la cause du bug "un équipier disparaît".
+// IMPORTANT : on écrit UNIQUEMENT l'onglet Acteurs (jamais saveToSheets() en entier) — une modification
+// d'acteur ne doit jamais pouvoir écraser les projets/tâches/heures, même si leur chargement local n'est
+// pas encore terminé au moment où on clique.
 async function mutateActors(mutateFn, savingMsg){
   const server = await fetchServerActors();
   if(server){
@@ -198,10 +215,39 @@ async function mutateActors(mutateFn, savingMsg){
   saveDB();
   render();
   if(savingMsg) showToast(savingMsg);
-  await saveToSheets();
+  await saveActorsToSheets();
+}
+
+// Écrit UNIQUEMENT l'onglet Acteurs (le backend Apps Script n'écrase que les onglets présents dans le
+// payload — en n'envoyant que "Acteurs", Projets/Tâches/CR/Heures restent intouchés côté serveur).
+async function saveActorsToSheets(){
+  if(!initialSyncDone){ showToast('⏳ Chargement initial en cours, patiente une seconde...'); }
+  await waitForInitialSync();
+  try{
+    const acteurs=[
+      ['ID','Nom','Rôle','Couleur','Email','Note','Actif'],
+      ...DB.actors.map(a=>[a.id||'',a.name||'',a.role||'',a.color||'','','',a.active===false?'Non':'Oui'])
+    ];
+    const payload=JSON.stringify({ action:'write', Acteurs: acteurs });
+    const formData=new FormData();
+    formData.append('action','write');
+    formData.append('payload',payload);
+    const res=await fetch(SHEETS_URL, { method:'POST', body: formData });
+    const text=await res.text();
+    let json;
+    try{ json=JSON.parse(text); } catch(parseErr){ throw new Error('Réponse non-JSON reçue : '+text.slice(0,200)); }
+    if(!json.ok) throw new Error(json.error||'Erreur serveur');
+    showToast('✅ Équipe sauvegardée dans Google Sheets !');
+    setSyncStatus('Sync ✓','var(--teal-t)');
+  } catch(err){
+    showToast('❌ Erreur sauvegarde équipe : '+err.message, true);
+    console.error(err);
+  }
 }
 
 async function saveToSheets(){
+  if(!initialSyncDone){ showToast('⏳ Chargement initial en cours, patiente une seconde...'); }
+  await waitForInitialSync();
   showToast('💾 Sauvegarde vers Google Sheets...');
   try {
     // Build sheets data
@@ -223,7 +269,7 @@ async function saveToSheets(){
       ['ID Tâche','ID Projet','Nom projet','Phase','Nom tâche','Assigné à','Date début','Date fin','Coût (€)','Priorité','Statut','Livrable','Validation','Commentaire'],
       ...DB.projects.flatMap(p=>(p.steps||[]).map(s=>[
         s.id||'', p.id||'', p.name||'', s.phase||'', s.name||'',
-        s.assignee||'', s.startDate||'', s.endDate||'',
+        (s.assignees||[]).join(', '), s.startDate||'', s.endDate||'',
         s.cost||0, s.priority||'normal',
         s.done?'Terminé':isLate(s)?'En retard':'En cours',
         '', '', (s.comments||[]).map(c=>c.author+': '+c.text).join(' | ')
