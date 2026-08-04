@@ -18,8 +18,8 @@ function renderActorView(aid){
     <div><div class="detail-title" style="margin-bottom:0">${a.name}</div><div class="detail-meta" style="margin-bottom:0">${a.role}</div></div>`;
   lc.appendChild(titleRow);
 
-  // Gather tasks
-  const myTasks=DB.projects.flatMap(p=>p.steps.filter(s=>s.assignee===aid).map(s=>({...s,projName:p.name,projId:p.id})));
+  // Gather tasks — une tâche peut avoir plusieurs assignés, on inclut celles où aid en fait partie
+  const myTasks=DB.projects.flatMap(p=>p.steps.filter(s=>stepAssignees(s).includes(aid)).map(s=>({...s,projName:p.name,projId:p.id})));
   const late=myTasks.filter(s=>isLate(s)).length;
   const done=myTasks.filter(s=>s.done).length;
   const cost=myTasks.reduce((s,t)=>s+(t.cost||0),0);
@@ -92,6 +92,8 @@ function renderActorView(aid){
     tasks.forEach(step=>{
       const late2=isLate(step);const sp=PAL[step.color]||PAL.teal;
       const pr=({high:{color:'#D83A2A'},normal:{color:'#BA7517'},low:{color:'#9A9A94'}})[step.priority||'normal'];
+      // Coéquipiers sur la même tâche (hors soi-même) — petit indice visuel que ce n'est pas assigné qu'à cette personne
+      const coAssignees=stepAssignees(step).filter(id=>id!==aid);
       const row=document.createElement('div');row.className='task-row';
       row.innerHTML=`
         <div class="task-check${step.done?' done':late2?' late':''}">${step.done?'✓':''}</div>
@@ -99,6 +101,7 @@ function renderActorView(aid){
         <div class="task-name${step.done?' done-text':''}">${step.name}</div>
         <div class="task-meta">
           <span class="task-phase" style="background:${sp.bg};border-color:${sp.b};color:${sp.t}">${(PHASES[step.phase]||{label:step.phase}).label}</span>
+          ${coAssignees.length?avGroupHTML(coAssignees,'av-sm'):''}
           <div class="task-dates">${fmtD(step.startDate)} → ${fmtD(step.endDate)}</div>
           ${step.cost?`<div class="task-cost">${step.cost.toLocaleString('fr-FR')}€</div>`:''}
           ${late2?`<div class="task-late">⚠ Retard</div>`:''}

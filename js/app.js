@@ -75,12 +75,25 @@ function render(){
     </div>`;
   renderNavTabs();
   renderRight();
-  if(state.view==='global') renderGlobal();
-  else if(state.view==='dashboard') renderDashboard();
-  else if(state.view==='projects') renderProjectsPage();
-  else if(state.view==='detail') renderDetail();
-  else if(state.view==='actor') renderActorView(state.actorId);
-  else if(state.view==='hours') renderHoursView();
+  // Le rendu de la vue courante est isolé dans un try/catch : si une vue plante (fichier manquant,
+  // bug ponctuel...), on ne veut surtout pas que ça empêche une sauvegarde en cours (mutateActors,
+  // saveEditStep, etc. font tous "...; render(); ...; await saveToSheets()" — une exception non
+  // rattrapée ici interromprait toute la chaîne et la sauvegarde ne partirait jamais, silencieusement).
+  try{
+    if(state.view==='global') renderGlobal();
+    else if(state.view==='dashboard') renderDashboard();
+    else if(state.view==='projects') renderProjectsPage();
+    else if(state.view==='detail') renderDetail();
+    else if(state.view==='actor'){
+      if(typeof renderActorView==='function') renderActorView(state.actorId);
+      else document.getElementById('left-col').innerHTML='<div style="padding:48px;text-align:center;color:var(--text3);font-size:13px">⚠ Vue profil indisponible (js/actor.js manquant ou pas à jour).</div>';
+    }
+    else if(state.view==='hours') renderHoursView();
+  } catch(err){
+    console.error('Erreur de rendu de la vue courante :', err);
+    const lc=document.getElementById('left-col');
+    if(lc) lc.innerHTML='<div style="padding:48px;text-align:center;color:var(--red-t);font-size:13px">⚠ Erreur d\'affichage — voir la console (F12). Les données restent sauvegardées normalement.</div>';
+  }
 }
 
 function renderNavTabs(){
