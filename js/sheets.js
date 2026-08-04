@@ -48,6 +48,10 @@ const initialSyncPromise=new Promise(res=>{initialSyncPromiseResolve=res;});
 async function waitForInitialSync(){
   if(!initialSyncDone) await initialSyncPromise;
 }
+// Nombre de projets vu au dernier chargement réussi depuis Google Sheets — sert de garde-fou dans
+// saveToSheets() : si on s'apprête à écrire 0 projet alors qu'on sait qu'il y en avait, quelque chose
+// ne va pas (DB locale corrompue/vidée) et on refuse d'écrire plutôt que de risquer d'effacer la feuille.
+let lastKnownProjectCount=null;
 
 async function syncFromSheets(){
   setSyncStatus('Chargement...','var(--blue-t)');
@@ -159,6 +163,7 @@ async function syncFromSheets(){
     }
 
     saveDB();
+    lastKnownProjectCount=DB.projects.length;
     setSyncStatus('Sync ✓','var(--teal-t)');
     showToast('☁️ Synchronisé depuis Google Sheets — '+DB.projects.length+' projets');
     render();
@@ -248,6 +253,14 @@ async function saveActorsToSheets(){
 async function saveToSheets(){
   if(!initialSyncDone){ showToast('⏳ Chargement initial en cours, patiente une seconde...'); }
   await waitForInitialSync();
+  // Garde-fou anti-effacement : si on a déjà vu des projets lors du dernier chargement et qu'il n'en
+  // reste plus aucun localement, on refuse d'écrire — mieux vaut bloquer une sauvegarde légitime (rare)
+  // que risquer de vider la feuille "Projets" à cause d'un bug local.
+  if(lastKnownProjectCount>0 && DB.projects.length===0){
+    showToast('❌ Sauvegarde bloquée : 0 projet en mémoire alors que '+lastKnownProjectCount+' étaient attendus. Recharge la page (F5) avant de réessayer — rien n\'a été écrit sur Google Sheets.', true);
+    console.error('saveToSheets() bloqué par le garde-fou : DB.projects est vide alors que lastKnownProjectCount='+lastKnownProjectCount);
+    return;
+  }
   showToast('💾 Sauvegarde vers Google Sheets...');
   try {
     // Build sheets data
